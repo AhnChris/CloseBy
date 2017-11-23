@@ -1,0 +1,17 @@
+<resources>
+    <string name="app_name">CloseBy</string>
+    <string name="action_settings">Settings</string>
+
+    <!-- TODO: Remove or change this placeholder text -->
+    <string name="hello_blank_fragment">Hello blank fragment</string>
+    <string name="sample_text">Sample Text</string>
+    <string name="action_show_list">Show List</string>
+    <string name="name_placeholder">Place Name</string>
+    <string name="phonenumber_placeholder">+111-111-1111</string>
+    <string name="distance_placeholder">111m</string>
+    <string name="website_placeholder">www.google.com</string>
+    <string name="snackbar_network_message">Network Unavailable. Waiting for connection</string>
+    <string name="name_not_available_text">Name: n/a</string>
+    <string name="phone_number_unavailable_text">PhoneNumber: n/a.</string>
+    <string name="website_unavailable_text">Website: n/a</string>
+</resources>

@@ -1,0 +1,9 @@
+<resources>
+    <dimen name="fab_margin">16dp</dimen>
+    <dimen name="cardview_image_height">150dp</dimen>
+    <dimen name="textview_header">16sp</dimen>
+    <dimen name="textview_subheader">12sp</dimen>
+    <dimen name="default_margin">8dp</dimen>
+    <dimen name="map_maker_width">20dp</dimen>
+    <dimen name="map_marker_height">20dp</dimen>
+</resources>
