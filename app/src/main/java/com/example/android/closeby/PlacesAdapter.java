@@ -126,11 +126,11 @@ public class PlacesAdapter extends RecyclerView.Adapter<PlacesAdapter.ViewHolder
             getPhoto(curPlace);
 
             // Populate the views with the curPlace data
-            mNameText.setText((curPlace.getName().isEmpty() || curPlace.getName() == null)
+            mNameText.setText((curPlace.getName() == null || curPlace.getName().isEmpty())
                     ? mContext.getString(R.string.name_not_available_text) : curPlace.getName());
 
-            mPhoneNumberText.setText((curPlace.getPhoneNumber().isEmpty()
-                    || curPlace.getPhoneNumber() == null)
+            mPhoneNumberText.setText((curPlace.getPhoneNumber() == null
+                    || curPlace.getPhoneNumber().isEmpty())
                     ? mContext.getString(R.string.phone_number_unavailable_text) : curPlace.getPhoneNumber());
 
             mRatingBar.setRating(curPlace.getRating() < 0 ? 0 : curPlace.getRating());
@@ -139,8 +139,8 @@ public class PlacesAdapter extends RecyclerView.Adapter<PlacesAdapter.ViewHolder
             mDistanceText.setText(distanceString);
 
             mWebsiteText.setText(
-                    (curPlace.getWebsiteUri().toString().isEmpty() 
-                            || curPlace.getWebsiteUri() == null) 
+                    (curPlace.getWebsiteUri() == null
+                            || curPlace.getWebsiteUri().toString().isEmpty())
                             ? mContext.getString(R.string.website_unavailable_text) : curPlace.getWebsiteUri().toString());
         }
 
