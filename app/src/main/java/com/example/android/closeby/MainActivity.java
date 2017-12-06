@@ -12,6 +12,7 @@ import android.location.LocationManager;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.os.Bundle;
+import android.os.Looper;
 import android.os.Parcelable;
 import android.support.annotation.NonNull;
 import android.support.design.widget.CoordinatorLayout;
@@ -52,13 +53,19 @@ import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.MarkerOptions;
 import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.Task;
+import com.navisens.motiondnaapi.MotionDna;
+import com.navisens.motiondnaapi.MotionDnaApplication;
+import com.navisens.motiondnaapi.MotionDnaInterface;
 
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Date;
 import java.util.List;
+import java.util.Map;
 
 public class MainActivity extends AppCompatActivity
-        implements OnMapReadyCallback {
+        implements OnMapReadyCallback, MotionDnaInterface, GoogleMap.OnMyLocationClickListener {
 
     // Tags
     private static final String LOG_TAG = MainActivity.class.getSimpleName();
@@ -74,7 +81,7 @@ public class MainActivity extends AppCompatActivity
 
     // Permissions
     private boolean mLocationPermissionGranted;
-    private static final int PERMISSION_REQUEST_ACCESS_FINE_LOCATION = 1;
+    private static final int PERMISSIONS_LOCATION_NAVI = 1;
 
     private GoogleMap mGmap;
 
@@ -94,6 +101,11 @@ public class MainActivity extends AppCompatActivity
     // Nearby places storage
     private List<PlaceContainer> mSortedCurNearbyPlaces;
 
+    // Navisens
+    private MotionDnaApplication mMotionDnaApplication;
+    SimpleDateFormat mSimpleDateFormat = new SimpleDateFormat("yyyy.MM.dd.HH.mm.ss");
+    boolean mMotionDnaAppStarted = false;
+
     protected void createLocationRequest() {
         mLocationRequest = new LocationRequest();
         // Default values and High Accuracy are set for typical tracking when walking
@@ -111,28 +123,7 @@ public class MainActivity extends AppCompatActivity
 
         // Instantiate the clients
         mPlaceDetectionClient = Places.getPlaceDetectionClient(this, null);
-        mFusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(this);
-
-        // Define the LocationCallback for our updates
-        mLocationCallback = new LocationCallback() {
-            @Override
-            public void onLocationResult(LocationResult locationResult) {
-                // Grab the most recent location result
-                Location mostRecentLocation = locationResult.getLastLocation();
-
-                /**
-                 * TODO: Maybe put a restriction here if we haven't moved
-                 */
-                if (mostRecentLocation != null) {
-                    // Update the maps positioning if we have a response
-                    mLastKnownLocation = mostRecentLocation;
-                    updateCameraMapPosition();
-
-                    // Find the nearest places
-                    findNearByPlaces();
-                }
-            }
-        };
+        //mFusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(this);
 
         // Find our fragment through its ID and build the map
         SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager()
@@ -188,13 +179,15 @@ public class MainActivity extends AppCompatActivity
     @Override
     protected void onResume() {
         super.onResume();
-        if (mLocationPermissionGranted)
+        if (mLocationPermissionGranted) {
             startLocationUpdates();
+        }
     }
 
     @Override
     protected void onPause() {
         super.onPause();
+
         stopLocationUpdates();
     }
 
@@ -207,6 +200,10 @@ public class MainActivity extends AppCompatActivity
         mGmap = googleMap;
         mGmap.setMinZoomPreference(DEFAULT_ZOOM);
 
+        mLastKnownLocation = new Location("");
+        mLastKnownLocation.setLatitude(0);
+        mLastKnownLocation.setLongitude(0);
+
         // Get user permission for location
         getPermission();
 
@@ -214,10 +211,7 @@ public class MainActivity extends AppCompatActivity
         updateLocationUI();
 
         // Check that we have all available LocationSettings to grab our position
-        checkLocationSettings();
-
-        // Get the current location and set it on the map
-        //getCurrentLocation();
+        //checkLocationSettings();
     }
 
     /**
@@ -241,13 +235,23 @@ public class MainActivity extends AppCompatActivity
         // onRequestPermissionResult callback
 
         if (ContextCompat.checkSelfPermission(this.getApplicationContext(),
-                Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                && MotionDnaApplication.checkMotionDnaPermissions(this) == true) {
             mLocationPermissionGranted = true;
-            createLocationRequest();
+            //createLocationRequest();
+
+            if (mMotionDnaApplication == null) {
+                mMotionDnaApplication = new MotionDnaApplication(this);
+            }
+
+            //getCurrentLocation();
+            runDna(getString(R.string.navisens_api_key));
         } else {
+
             ActivityCompat.requestPermissions(this,
-                    new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
-                    PERMISSION_REQUEST_ACCESS_FINE_LOCATION);
+                    // needsRequestingPermission() contains all the relevant permissions we want
+                    MotionDnaApplication.needsRequestingPermissions(),
+                    PERMISSIONS_LOCATION_NAVI);
         }
     }
 
@@ -260,14 +264,27 @@ public class MainActivity extends AppCompatActivity
 
         // Handle by the requestCode that is passed in
         switch (requestCode) {
-            case PERMISSION_REQUEST_ACCESS_FINE_LOCATION: {
+            case PERMISSIONS_LOCATION_NAVI: {
                 // Check for a granted permission
-                if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                if (/*grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED*/
+                        MotionDnaApplication.checkMotionDnaPermissions(this) == true) {
                     mLocationPermissionGranted = true;
-                    createLocationRequest();
+                    //createLocationRequest();
+
+                    if (mMotionDnaApplication == null) {
+                        mMotionDnaApplication = new MotionDnaApplication(this);
+                    }
+
+                    //getCurrentLocation();
+
+                    // Setup the MotionDnaApplication
+                    runDna(getString(R.string.navisens_api_key));
                 }
             }
         }
+
+        // Check that we have satisfactory settings for the LocationRequest
+        //checkLocationSettings();
 
         // Update the location UI settings after resolving the permission
         updateLocationUI();
@@ -285,6 +302,7 @@ public class MainActivity extends AppCompatActivity
             if (mLocationPermissionGranted) {
                 mGmap.setMyLocationEnabled(true);
                 mGmap.getUiSettings().setMyLocationButtonEnabled(true);
+                mGmap.setOnMyLocationClickListener(this);
             } else {
                 mGmap.setMyLocationEnabled(false);
                 mGmap.getUiSettings().setMyLocationButtonEnabled(false);
@@ -302,27 +320,44 @@ public class MainActivity extends AppCompatActivity
      * Get the most recent location and set it on the map
      */
     private void getCurrentLocation() {
-        try {
-            // Get the most current/recent location
-            if (mLocationPermissionGranted) {
-                Task<Location> locationResult = mFusedLocationProviderClient.getLastLocation();
-                locationResult.addOnCompleteListener(this, new OnCompleteListener<Location>() {
-                    @Override
-                    public void onComplete(@NonNull Task<Location> task) {
-                        if (task.isSuccessful()) {
-                            // Set our new location and update the map camera
-                            mLastKnownLocation = task.getResult();
-                            updateCameraMapPosition();
-                        }
-                    }
-                });
-
-                // Request location updates
-                startLocationUpdates();
-            }
-        } catch (SecurityException e) {
-            Log.e(LOG_TAG, e.getMessage());
+        // Get the current location through the system
+        LocationManager locationManager = (LocationManager) getApplicationContext().getSystemService(LOCATION_SERVICE);
+        if (ActivityCompat.checkSelfPermission(this,
+                Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED
+                && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            // TODO: Consider calling
+            //    ActivityCompat#requestPermissions
+            // here to request the missing permissions, and then overriding
+            //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+            //                                          int[] grantResults)
+            // to handle the case where the user grants the permission. See the documentation
+            // for ActivityCompat#requestPermissions for more details.
+            return;
         }
+        mLastKnownLocation = locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
+        updateCameraMapPosition();
+//        try {
+//            // Get the most current/recent location
+//            if (mLocationPermissionGranted) {
+//                Task<Location> locationResult = mFusedLocationProviderClient.getLastLocation();
+//                locationResult.addOnCompleteListener(this, new OnCompleteListener<Location>() {
+//                    @Override
+//                    public void onComplete(@NonNull Task<Location> task) {
+//                        if (task.isSuccessful()) {
+//                            // Set our new location and update the map camera
+//                            mLastKnownLocation = task.getResult();
+//                            updateCameraMapPosition();
+//                        }
+//                    }
+//                });
+//
+//                // Request location updates
+//                startLocationUpdates();
+//            }
+//        } catch (SecurityException e) {
+//            Log.e(LOG_TAG, e.getMessage());
+//        }
+        runDna(getString(R.string.navisens_api_key));
     }
 
     /**
@@ -347,7 +382,10 @@ public class MainActivity extends AppCompatActivity
 
                     // All location settings are satisfied. Client can perform location requests.
                     Log.d(LOG_TAG, "checkLocationSettings(): All settings were satisfied");
-                    getCurrentLocation();
+
+                    runDna(getString(R.string.navisens_api_key));
+
+                    //getCurrentLocation();
 
                 } catch (ApiException exception) {
                     switch (exception.getStatusCode()) {
@@ -378,7 +416,8 @@ public class MainActivity extends AppCompatActivity
                             // Output a snackbar message suggesting a network error
                             Snackbar.make((CoordinatorLayout) findViewById(R.id.activity_main_container)
                                     , R.string.snackbar_network_message, Snackbar.LENGTH_SHORT).show();
-                            getCurrentLocation();
+                            runDna(getString(R.string.navisens_api_key));
+                            //getCurrentLocation();
                             Log.d(LOG_TAG, "checkLocationSettings(): Unable to resolve, could be network issue");
                             break;
                     }
@@ -389,6 +428,7 @@ public class MainActivity extends AppCompatActivity
 
     /**
      * The method which will check if the correct changes were made to service our LocationRequest
+     *
      * @param requestCode
      * @param resultCode
      * @param data
@@ -399,12 +439,13 @@ public class MainActivity extends AppCompatActivity
         switch (requestCode) {
 
             case REQUEST_CHECK_SETTINGS:
-                switch(resultCode) {
+                switch (resultCode) {
                     case Activity.RESULT_OK:
 
                         // The necessary changes were made
                         Log.d(LOG_TAG, "onActivityResult: GPS setting was resolved");
-                        getCurrentLocation();
+                        runDna(getString(R.string.navisens_api_key));
+                        //getCurrentLocation();
                         break;
 
                     case Activity.RESULT_CANCELED:
@@ -495,6 +536,7 @@ public class MainActivity extends AppCompatActivity
 
     /**
      * Method to update the data of an already inflated PlaceDetailFragment
+     *
      * @param newSortedNearbyPlacesData
      */
     private void updatePlaceDetailData(List<PlaceContainer> newSortedNearbyPlacesData) {
@@ -548,8 +590,9 @@ public class MainActivity extends AppCompatActivity
 
     /**
      * Method to check if we are connected to the network
-     * @return true - if connected
      *
+     * @return true - if connected
+     * <p>
      * TODO: Possibly move method into a Utility class if we acquire more methods like this one
      */
     protected boolean isNetworkAvailable() {
@@ -568,8 +611,9 @@ public class MainActivity extends AppCompatActivity
 
     /**
      * Method for checking if GPS is turned on
-     * @return true if turned on
      *
+     * @return true if turned on
+     * <p>
      * TODO: Possibly move method into a Utility class if we acquire more methods like this one
      */
     protected boolean isGpsOn() {
@@ -584,34 +628,162 @@ public class MainActivity extends AppCompatActivity
      * Starts the process of obtaining location updates
      */
     private void startLocationUpdates() {
-        try {
-            mFusedLocationProviderClient.requestLocationUpdates(mLocationRequest, mLocationCallback
-                    , null);
-            Log.d(LOG_TAG, "Running startLocationUpdates()");
-        } catch (SecurityException e) {
-            Log.e(LOG_TAG, e.getMessage());
-        }
+//        try {
+//            mFusedLocationProviderClient.requestLocationUpdates(mLocationRequest, mLocationCallback
+//                    , null);
+//            Log.d(LOG_TAG, "Running startLocationUpdates()");
+//        } catch (SecurityException e) {
+//            Log.e(LOG_TAG, e.getMessage());
+//        }
+
+        mMotionDnaApplication.resume();
+        Log.d(LOG_TAG, "Running startLocationUpdates()");
     }
 
     /**
      * Stops the process of location updates
      */
     private void stopLocationUpdates() {
-        mFusedLocationProviderClient.removeLocationUpdates(mLocationCallback);
+//        mFusedLocationProviderClient.removeLocationUpdates(mLocationCallback);
         Log.d(LOG_TAG, "Running stopLocationUpdates()");
+
+        if (mMotionDnaApplication != null) {
+            mMotionDnaApplication.pause();
+        }
     }
 
     /**
      * Attempt to center the map when the fab is pressed. This will check
+     *
      * @param view
      */
     public void fabButtonClick(View view) {
         if (!isGpsOn()) {
             // Attempt to resolve the GPS issue
-            checkLocationSettings();
+            //checkLocationSettings();
         } else {
             // Update our camera positioning
             updateCameraMapPosition();
         }
+    }
+
+    /**
+     * Method to setup the MotionDnaApplication
+     *
+     * @param apiKey
+     */
+    public void runDna(String apiKey) {
+        Log.d(LOG_TAG, "Calling runDna method");
+
+        if (!mMotionDnaAppStarted) {
+
+            mMotionDnaAppStarted = true;
+
+            mMotionDnaApplication.runMotionDna(apiKey);
+            mMotionDnaApplication.setCallbackUpdateRateInMs(5 * 1000);
+            mMotionDnaApplication.setMapCorrectionEnabled(true);
+            mMotionDnaApplication.setBinaryFileLoggingEnabled(true);
+            mMotionDnaApplication.setExternalPositioningState(MotionDna.ExternalPositioningState.HIGH_ACCURACY);
+            mMotionDnaApplication.setLocationNavisens();
+        }
+    }
+
+    /**
+     * The callback that receives the location data
+     *
+     * @param motionDna
+     */
+    @Override
+    public void receiveMotionDna(MotionDna motionDna) {
+
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            Log.d(LOG_TAG, "receiveMotionDna method on UI thread");
+        } else {
+            Log.d(LOG_TAG, "receiveMotionDna method NOT on UI thread");
+        }
+
+        if (motionDna.getID().equals(mMotionDnaApplication.getDeviceID())) {
+            MotionDna.Location location = motionDna.getLocation();
+            MotionDna.MotionStatistics globalStatistics = motionDna.getMotionStatistics();
+            String locationInfo = "\nx:" + location.localLocation.x
+                    + "\ny:" + location.localLocation.y
+                    + "\nz:" + location.localLocation.z
+                    + "\ndwelling:" + globalStatistics.dwelling
+                    + "\nwalking:" + globalStatistics.walking
+                    + "\nstationary:" + globalStatistics.stationary;
+
+            // Grab the Lat/Long from the globalLocation
+            mLastKnownLocation.setLatitude(location.globalLocation.latitude);
+            mLastKnownLocation.setLongitude(location.globalLocation.longitude);
+
+            // Update the camera position
+            updateCameraMapPosition();
+
+            // Look for nearby places
+            findNearByPlaces();
+
+            Log.d(LOG_TAG, "Latitude: " + mLastKnownLocation.getLatitude()
+                    + " Longitude: " + mLastKnownLocation.getLongitude());
+
+            final MotionDna.Motion motion = motionDna.getMotion();
+
+            String recognizedMotion = null;
+            if (motion.secondaryMotion != null && motion.primaryMotion != null) {
+                recognizedMotion = "\nrecognized:S/" + SecondaryMotionModel.MOTION_NAMES[motion.secondaryMotion.ordinal()]
+                        + "\nP/" + PrimaryMotionModel.MOTION_NAMES[motion.primaryMotion.ordinal()];
+            }
+        }
+    }
+
+    @Override
+    public void receiveNetworkData(MotionDna motionDna) {
+
+    }
+
+    @Override
+    public void receiveNetworkData(MotionDna.NetworkCode networkCode, Map<String, ?> map) {
+
+    }
+
+    @Override
+    public void reportError(MotionDna.ErrorCode errorCode, String s) {
+        switch (errorCode) {
+            case ERROR_AUTHENTICATION_FAILED:
+                System.out.println("Error: authentication failed " + s); // Authentication to our servers failed. Email us for information as of why. This causes SDK to shut down.
+                break;
+            case ERROR_SDK_EXPIRED:
+                System.out.println("Error: SDK expired " + s); // SDK hasn't been updated in 1 year. Update your SDK. This causes SDK to shut down.
+                break;
+            case ERROR_PERMISSIONS:
+                System.out.println("Error: permissions not granted " + s); // Some permissions haven't been granted.
+                break;
+            case ERROR_SENSOR_MISSING:
+                System.out.println("Error: sensor missing " + s);// Will be or Accelerometer or Gyroscope, this helps handle incompatible phones. SDK will not work if this triggers.
+                break;
+            case ERROR_SENSOR_TIMING:
+                System.out.println("Error: sensor timing " + s);// Timing between sensor samples is inconsistent, this allows you to handle behaviors appropriately.
+                break;
+        }
+    }
+
+    @Override
+    public Context getAppContext() {
+        return getApplicationContext();
+    }
+
+    @Override
+    public PackageManager getPkgManager() {
+        return getPackageManager();
+    }
+
+    /**
+     * The callback when current location is clicked
+     *
+     * @param location
+     */
+    @Override
+    public void onMyLocationClick(@NonNull Location location) {
+        Snackbar.make((CoordinatorLayout) findViewById(R.id.activity_main_container)
+                , "Clicked on myself!", Snackbar.LENGTH_SHORT).show();
     }
 }

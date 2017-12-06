@@ -10,6 +10,7 @@ android {
         versionName "1.0"
         testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
         resValue "string", "google_maps_key", (project.findProperty("GOOGLE_MAPS_API_KEY") ?: "")
+        resValue "string", "navisens_api_key", (project.findProperty("NAVISENS_API_KEY") ?: "")
     }
     buildTypes {
         release {
@@ -37,4 +38,7 @@ dependencies {
     testImplementation 'junit:junit:4.12'
     androidTestImplementation 'com.android.support.test:runner:1.0.1'
     androidTestImplementation 'com.android.support.test.espresso:espresso-core:3.0.1'
+
+    implementation group: "com.navisens", name: "motiondnaapi", version: "0.8-SNAPSHOT", changing: true
+    implementation 'org.altbeacon:android-beacon-library:2.+'
 }
